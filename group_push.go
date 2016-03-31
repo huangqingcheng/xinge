@@ -3,9 +3,8 @@ package xinge
 import (
     "encoding/json"
     "errors"
-    "fmt"
-    "strings"
-    "time"
+    "reflect"
+    "strconv"
 )
 
 type GroupPushAPI struct {
@@ -18,6 +17,8 @@ func NewGroupPushAPI(client *Client) *GroupPushAPI {
         client:    client,
         messageId: 0,
     }
+
+    return &api
 }
 
 func (api *GroupPushAPI) CreateMessage(msgtype MessageType, msgbody interface{}, env PushEnv) error {
@@ -26,7 +27,7 @@ func (api *GroupPushAPI) CreateMessage(msgtype MessageType, msgbody interface{},
         return err
     }
 
-    req := api.client.NewRequest("POST", createMultiMessageUrl)
+    req := api.client.NewRequest("GET", createMultiMessageUrl)
     req.SetParam("message_type", msgtype)
     req.SetParam("message", string(raw))
     req.SetParam("expire_time", 1)
@@ -42,7 +43,18 @@ func (api *GroupPushAPI) CreateMessage(msgtype MessageType, msgbody interface{},
         return errors.New("xinge: response err: " + resp.Error())
     }
 
-    println(fmt.Sprintf("%v", resp.Result))
+    v1, ok := resp.Result.(map[string]interface{})
+    if !ok {
+        return errors.New("xinge: parse response result failure")
+    }
+
+    v2 := reflect.ValueOf(v1["push_id"])
+    v3, err := strconv.ParseUint(v2.String(), 10, 32)
+    if err != nil {
+        return err
+    }
+
+    api.messageId = uint32(v3)
 
     return nil
 }

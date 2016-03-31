@@ -16,43 +16,42 @@ package xinge
 import "errors"
 
 type Client struct {
-	AccessId  string
-	AccessKey string
-	ValidTime uint
-	SecretKey string
+    AccessId  string
+    AccessKey string
+    ValidTime uint
+    SecretKey string
 }
 
 func NewClient(accessId string, validTime uint, accessKey, secretKey string) *Client {
-	return &Client{
-		AccessId:  accessId,
-		AccessKey: accessKey,
-		ValidTime: validTime,
-		SecretKey: secretKey,
-	}
+    return &Client{
+        AccessId:  accessId,
+        AccessKey: accessKey,
+        ValidTime: validTime,
+        SecretKey: secretKey,
+    }
 }
 
 func (cli *Client) NewRequest(method, url string) *Request {
-	return &Request{
-		HttpMethod: method,
-		HttpUrl:    url,
-		Params:     make(map[string]interface{}),
-		Client:     cli,
-	}
+    return &Request{
+        HttpUrl: url,
+        Params:  make(map[string]interface{}),
+        Client:  cli,
+    }
 }
 
 func (cli *Client) AppDeviceNum() (int64, error) {
-	request := cli.NewRequest("GET", deviceNumUrl)
+    request := cli.NewRequest("GET", deviceNumUrl)
 
-	response, err := request.Execute()
-	if err != nil {
-		return 0, errors.New("<xinge> request app device num err:" + err.Error())
-	}
+    response, err := request.Execute()
+    if err != nil {
+        return 0, errors.New("<xinge> request app device num err:" + err.Error())
+    }
 
-	if !response.OK() {
-		return 0, errors.New("<xinge> response err:" + response.Error())
-	}
+    if !response.OK() {
+        return 0, errors.New("<xinge> response err:" + response.Error())
+    }
 
-	result := response.Result.(map[string]interface{})
+    result := response.Result.(map[string]interface{})
 
-	return int64(result["device_num"].(float64)), nil
+    return int64(result["device_num"].(float64)), nil
 }

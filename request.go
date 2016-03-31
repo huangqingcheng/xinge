@@ -14,72 +14,84 @@
 package xinge
 
 import (
-	"crypto/md5"
-	"encoding/json"
-	"fmt"
-	"github.com/aiwuTech/httpclient"
-	"log"
-	"net/url"
-	"sort"
-	"strings"
-	"time"
+    "crypto/md5"
+    "encoding/json"
+    "fmt"
+    "io/ioutil"
+    "net/http"
+    "net/url"
+    "sort"
+    "strings"
+    "time"
+
+    "github.com/mreiferson/go-httpclient"
+)
+
+var (
+    transport = &httpclient.Transport{
+        ConnectTimeout:        12 * time.Second,
+        RequestTimeout:        8 * time.Second,
+        ResponseHeaderTimeout: 8 * time.Second,
+    }
+    client = &http.Client{Transport: transport}
 )
 
 type Request struct {
-	HttpMethod string
-	HttpUrl    string
-	Params     map[string]interface{}
-	Client     *Client
+    HttpUrl string
+    Params  map[string]interface{}
+    Client  *Client
 }
 
 func (req *Request) SetParam(name string, value interface{}) {
-	req.Params[name] = value
+    req.Params[name] = value
 }
 
 func (req *Request) SetParams(params map[string]interface{}) {
-	for k, v := range params {
-		req.SetParam(k, v)
-	}
+    for k, v := range params {
+        req.SetParam(k, v)
+    }
 }
 
 func (req *Request) Execute() (*Response, error) {
-	body, err := req.doRequestAndGetBody()
-	if err != nil {
-		return nil, err
-	}
+    body, err := req.doRequestAndGetBody()
+    if err != nil {
+        return nil, err
+    }
 
-	log.Println(string(body))
-	rspMsg := new(Response)
-	if err := json.Unmarshal(body, rspMsg); err != nil {
-		return nil, err
-	}
+    rspMsg := new(Response)
+    if err := json.Unmarshal(body, rspMsg); err != nil {
+        return nil, err
+    }
 
-	return rspMsg, nil
+    return rspMsg, nil
 }
 
 func (req *Request) doRequestAndGetBody() ([]byte, error) {
-	urls := req.HttpUrl + "?" + req.queryString()
+    rsp, err := http.PostForm(req.HttpUrl, req.postForm())
+    if err != nil {
+        return nil, err
+    }
 
-	rsp, err := httpclient.ForwardHttp(req.HttpMethod, urls, nil)
-	if err != nil {
-		return nil, err
-	}
+    bodyBytes, err := ioutil.ReadAll(rsp.Body)
+    if err != nil {
+        return nil, err
+    }
+    defer rsp.Body.Close()
 
-	body := httpclient.GetForwardHttpBody(rsp.Body)
-	return body, nil
+    return bodyBytes, nil
 }
 
-func (req *Request) queryString() string {
-	reqParams := req.makeRequestParams()
-	sign := req.md5Signature(reqParams)
+func (req *Request) postForm() url.Values {
+    reqParams := req.makeRequestParams()
+    sign := req.md5Signature(reqParams)
 
-	values := url.Values{}
-	values.Add("sign", sign)
-	for k, v := range reqParams {
-		values.Add(k, fmt.Sprintf("%v", v))
-	}
+    values := url.Values{}
+    values.Add("sign", sign)
+    for k, v := range reqParams {
+        values.Add(k, fmt.Sprintf("%v", v))
+    }
 
-	return values.Encode()
+    return values
 }
 
 /**
@@ -99,52 +111,52 @@ Sign=MD5($http_method$url$k1=$v1$k2=$v2$secret_key); 该签名值基本可以保
 	注意字典序中大写在前。计算出该字符串的MD5为ccafecaef6be07493cfe75ebc43b7d53，以此作为sign参数的值
 */
 func (req *Request) md5Signature(params map[string]interface{}) string {
-	origin := req.joinRequestParams(params)
-	if origin == "" {
-		return ""
-	}
+    origin := req.joinRequestParams(params)
+    if origin == "" {
+        return ""
+    }
 
-	urls, err := url.ParseRequestURI(req.HttpUrl)
-	if err != nil {
-		return ""
-	}
+    urls, err := url.ParseRequestURI(req.HttpUrl)
+    if err != nil {
+        return ""
+    }
 
-	origin = req.HttpMethod + urls.Host + urls.Path + origin + req.Client.SecretKey
+    origin = "POST" + urls.Host + urls.Path + origin + req.Client.SecretKey
 
-	c := md5.New()
-	c.Write([]byte(origin))
-	return strings.ToLower(fmt.Sprintf("%X", c.Sum(nil)))
+    c := md5.New()
+    c.Write([]byte(origin))
+    return strings.ToLower(fmt.Sprintf("%X", c.Sum(nil)))
 }
 
 func (req *Request) joinRequestParams(params map[string]interface{}) string {
-	if params == nil || len(params) == 0 {
-		return ""
-	}
+    if params == nil || len(params) == 0 {
+        return ""
+    }
 
-	keys := make([]string, 0)
-	origin := ""
-	for k, _ := range params {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+    keys := make([]string, 0)
+    origin := ""
+    for k, _ := range params {
+        keys = append(keys, k)
+    }
+    sort.Strings(keys)
 
-	for _, key := range keys {
-		origin += key + fmt.Sprintf("=%v", params[key])
-	}
+    for _, key := range keys {
+        origin += key + fmt.Sprintf("=%v", params[key])
+    }
 
-	return origin
+    return origin
 }
 
 func (req *Request) makeRequestParams() map[string]interface{} {
-	ps := make(map[string]interface{})
+    ps := make(map[string]interface{})
 
-	ps["access_id"] = req.Client.AccessId
-	ps["timestamp"] = time.Now().Unix()
-	ps["valid_time"] = req.Client.ValidTime
+    ps["access_id"] = req.Client.AccessId
+    ps["timestamp"] = time.Now().Unix()
+    ps["valid_time"] = req.Client.ValidTime
 
-	for k, v := range req.Params {
-		ps[k] = v
-	}
+    for k, v := range req.Params {
+        ps[k] = v
+    }
 
-	return ps
+    return ps
 }
